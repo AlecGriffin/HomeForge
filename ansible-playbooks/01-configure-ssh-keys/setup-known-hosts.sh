@@ -1,0 +1,1 @@
+ssh-keyscan -H zeus poseidon hades apollo ares artemis hera aphrodite >> ~/.ssh/known_hosts

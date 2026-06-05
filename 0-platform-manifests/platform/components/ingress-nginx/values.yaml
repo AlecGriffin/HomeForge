@@ -1,0 +1,4 @@
+controller:
+  allowSnippetAnnotations: true # Unsafe
+  ingressClassResource:
+    default: true

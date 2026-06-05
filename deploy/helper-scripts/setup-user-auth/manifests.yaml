@@ -1,0 +1,32 @@
+# ---
+# kind: ClusterRoleBinding
+# apiVersion: rbac.authorization.k8s.io/v1
+# metadata:
+#   name: oidc-viewer
+# roleRef:
+#   apiGroup: rbac.authorization.k8s.io
+#   kind: ClusterRole
+#   name: view
+# subjects:
+# - kind: User
+#   name: gitlab-ci:project_path:homelab/admin:ref_type:branch:ref:main
+# - kind: User
+#   name: gitlab:MyUserName
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: oidc-admin
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+- kind: User
+  name: gitlab:alecgriffin
+- kind: User
+  name: gitlab-ci:project_path:homelab/test-pipelines/k8s-auth-test:ref_type:branch:ref:main
+- kind: User
+  name: gitlab-ci:project_path:homelab/hosted-websites/personal-website:ref_type:branch:ref:main
+# - kind: Group
+#   name: gitlab:homelab/hosted-websites

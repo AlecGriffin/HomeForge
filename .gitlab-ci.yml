@@ -1,0 +1,41 @@
+# stages:
+#   - prepare
+#   - create
+#   - post-build
+#   - destroy
+
+# ------------------ #
+# --- Kubernetes --- #
+# ------------------ #
+
+# prepare_host_machines:
+#   stage: prepare
+#   image: quay.io/ansible/ansible-runner:latest
+#   scripts:
+#     - ansible-playbook -v -K -i ./ansible-playbooks/inventory.yaml ./ansible-playbooks/00-update-hosts/playbook.yaml
+#   when: manual
+
+# create_kubernetes_cluster:
+#   stage: create
+#   image: quay.io/ansible/ansible-runner:latest
+#   scripts:
+#     - ansible-playbook -v -K -i ./ansible-playbooks/inventory.yaml ./ansible-playbooks/01-configure-ssh-keys
+#   when: manual
+
+# destroy_kubernetes_cluster:
+#   stage: destroy
+#   image: quay.io/ansible/ansible-runner:latest
+#   scripts:
+#     - ansible-playbook -v -K -i ./ansible-playbooks/inventory.yaml ./ansible-playbooks/02-configure-k8s-host/cleanup
+#   when: manual
+
+# ------------------ #
+# --- Post-Build --- #
+# ------------------ #
+
+# deploy_components:
+#   stage: post-build
+#   image: ""  # TODO: Determine image here
+#   scripts:
+#     - # TODO: Determine scripts
+#   when: manual

@@ -1,0 +1,21 @@
+# --- Machine Details --- #
+kubernetes_version: "v1.32"
+machine_architecture: "arm64"
+user: "alecgriffin"
+
+# --- Kube-vip configurations --- #
+kube_vip_version: "v1.0.1"
+kube_vip_interface: "eth0"
+kube_vip_address: "192.168.1.60" # Defines the virtual IP to use as the cluster endpoint 
+
+# TODO: Finalize CNI CIDR
+# Pod Subnet to use for Cilium CNI
+pod_subnet: "10.0.0.0/16"
+
+# --- Component Configurations --- #
+cilium_version: "1.17.2"
+
+# --- Local Kubeconfig Folder --- #
+kubeconfig_path: "~/home-server/admin.conf"
+
+

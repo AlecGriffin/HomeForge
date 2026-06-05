@@ -1,0 +1,19 @@
+all:
+  vars:
+    ansible_connection: ssh
+    ansible_user: alecgriffin
+  children: 
+    firstControlPlaneNode:
+      hosts:
+        zeus:
+    otherControlPlaneNodes:
+      hosts:
+        poseidon:
+        hades:
+    workerNodes:
+      hosts:
+        apollo:
+        ares:
+        artemis:
+        hera:
+        aphrodite:

@@ -1,0 +1,1 @@
+ansible-playbook -v -K -i ../../inventory.yaml playbook.yaml --private-key ~/.ssh/id_rsa

@@ -1,0 +1,260 @@
+# Playbook #1 - Configure hosts for Kubernetes
+- name: Install all prerequisites, the CRI (containerd), and Kubernetes components (kubeadm, kubectl, kubelet)
+  hosts: all
+  become: yes
+  vars_files:
+  - vars/vars.yaml
+  tasks:
+    - ansible.builtin.include_tasks: configure-machine.yaml
+  handlers:
+  - name: restart containerd
+    service:
+      name: containerd
+      state: restarted
+
+# Playbook #2 - Setup shared resources for all control planes
+- name: Setup common files for control plane nodes
+  hosts: firstControlPlaneNode:otherControlPlaneNodes
+  become: true
+  become_method: sudo
+  become_user: root
+  vars_files:
+  - vars/vars.yaml
+  tasks:
+    - name: Ensure destination directory exists
+      ansible.builtin.file:
+        path: /etc/kubernetes/auth
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+    - name: Write AuthenticationConfiguration for kube-apiserver
+      ansible.builtin.copy:
+        dest: /etc/kubernetes/auth/auth-config.yaml
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          apiVersion: apiserver.config.k8s.io/v1beta1
+          kind: AuthenticationConfiguration
+          jwt:
+          - issuer:
+              url: https://gitlab.thegriffinshome.com
+              audiences:
+              - 7559b45c6c13286513b01df340c1e61479de9f0a84aa9e98e311bca865cf6d27
+              - kubernetes
+              audienceMatchPolicy: MatchAny
+            claimMappings:
+              username:
+                expression: 'has(claims.preferred_username) ? "gitlab:" + claims.preferred_username : "gitlab-ci:" + claims.sub'
+              groups:
+                claim: groups_direct
+                prefix: "gitlab:"
+              uid:
+                expression: 'has(claims.preferred_username) ? "gitlab:" + claims.preferred_username : "gitlab-ci:" + claims.sub'
+
+
+# Playbook #3 - Setup the first Control-Plane node
+- name: Install kube-vip and config first Control-Plane node
+  hosts: firstControlPlaneNode
+  become: true
+  become_method: sudo
+  become_user: root
+  vars_files:
+  - vars/vars.yaml
+  tasks:
+    - name: Pull kube-vip image
+      ansible.builtin.shell: |
+        sudo ctr image pull ghcr.io/kube-vip/kube-vip:{{kube_vip_version}}
+    
+    - name: Run kube-vip to setup static pod manifest and place in /etc/kubernetes/manifests
+      ansible.builtin.shell: | 
+        mkdir -p /etc/kubernetes/manifests
+        sudo ctr run --rm --net-host ghcr.io/kube-vip/kube-vip:{{kube_vip_version}} vip /kube-vip manifest pod \
+        --interface {{kube_vip_interface}} \
+        --address {{kube_vip_address}} \
+        --controlplane \
+        --services \
+        --arp \
+        --leaderElection | sudo tee /etc/kubernetes/manifests/kube-vip.yaml
+        sed -i 's#path: /etc/kubernetes/admin.conf#path: /etc/kubernetes/super-admin.conf#' \
+            /etc/kubernetes/manifests/kube-vip.yaml
+        
+    - name: Create the file kubeadm-config.yaml in /tmp/
+      ansible.builtin.copy:
+        dest: /tmp/kubeadm-config.yaml
+        content: |
+          kind: ClusterConfiguration
+          apiVersion: kubeadm.k8s.io/v1beta4
+          controlPlaneEndpoint: "{{kube_vip_address}}:6443"
+          networking:
+            podSubnet: "{{pod_subnet}}"
+          apiServer:
+            extraArgs:
+              - name: authentication-config
+                value: /etc/kubernetes/auth/auth-config.yaml
+            extraVolumes:
+              - name: kubernetes-auth
+                hostPath: /etc/kubernetes/auth
+                mountPath: /etc/kubernetes/auth
+                readOnly: true
+                pathType: Directory
+          ---
+          kind: KubeletConfiguration
+          apiVersion: kubelet.config.k8s.io/v1beta1
+          cgroupDriver: systemd
+          serverTLSBootstrap: true
+          ---
+          kind: InitConfiguration
+          apiVersion: kubeadm.k8s.io/v1beta4
+          nodeRegistration: {}
+
+    - name: Initialize the cluster using the config file
+      ansible.builtin.shell: |
+        kubeadm init --config /tmp/kubeadm-config.yaml --upload-certs
+      #   touch /etc/kubernetes/ansible-installed-k8s
+      # args:
+      #   creates: /etc/kubernetes/ansible-installed-k8s
+      
+    - name: Setup kubeconfig for regular User
+      ansible.builtin.shell: |
+        mkdir -p "/home/{{user}}/.kube"
+        sudo cp /etc/kubernetes/admin.conf "/home/{{user}}/.kube/config"
+
+    - name: Setup kubeconfig for Root User
+      ansible.builtin.shell: |
+        mkdir -p "$HOME/.kube"
+        sudo cp /etc/kubernetes/admin.conf "$HOME/.kube/config"
+        
+    - name: Change kubeconfig file permission
+      file:
+        path: /home/{{user}}/.kube/config 
+        owner: "{{ user }}"
+        group: "{{ user }}"
+        mode: 0644
+    
+    - name: Download and install Cilium CLI
+      ansible.builtin.shell: |
+        CILIUM_CLI_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/cilium-cli/main/stable.txt)
+        CLI_ARCH=amd64
+        if [ "$(uname -m)" = "aarch64" ]; then CLI_ARCH=arm64; fi
+        curl -L --fail --remote-name-all https://github.com/cilium/cilium-cli/releases/download/${CILIUM_CLI_VERSION}/cilium-linux-${CLI_ARCH}.tar.gz{,.sha256sum}
+        sha256sum --check cilium-linux-${CLI_ARCH}.tar.gz.sha256sum
+        sudo tar xzvfC cilium-linux-${CLI_ARCH}.tar.gz /usr/local/bin
+        rm cilium-linux-${CLI_ARCH}.tar.gz{,.sha256sum}
+        touch /etc/kubernetes/ansible-installed-cilium
+      args:
+        creates: /etc/kubernetes/ansible-installed-cilium
+
+    - name: Install Cilium CNI
+      ansible.builtin.shell: |
+        cilium install --version {{cilium_version}} 
+
+    - name: Generate the command to join a node and assign it to a variable
+      ansible.builtin.shell: kubeadm token create --print-join-command
+      register: join_command
+
+    - name: Generate the certificate key and assign it to a variable
+      shell: kubeadm init phase upload-certs --upload-certs
+      register: certificate_key  
+    - name: Copy admin kubeconfig to local machine
+      ansible.builtin.fetch:
+        src: /etc/kubernetes/admin.conf
+        dest: ~/.kube/config
+        flat: yes
+
+    # - name: Copy kubeconfig to local machine
+    #   fetch:
+    #     flat: true
+    #     src: /etc/kubernetes/admin.conf
+    #     dest: "{{ kubeconfig_path }}"
+
+
+
+# Playbook #3 - Setup other Control-Plane Nodes
+- name: Join other Control-Plane nodes to the cluster
+  hosts: otherControlPlaneNodes
+  become: true
+  become_method: sudo
+  become_user: root
+  serial: 1
+  vars_files:
+  - vars/vars.yaml
+  tasks:
+    - name: Pull kube-vip image
+      ansible.builtin.shell: |
+        sudo ctr image pull ghcr.io/kube-vip/kube-vip:{{kube_vip_version}}
+    
+    - name: Run kube-vip to setup static pod manifest and place in /etc/kubernetes/manifests
+      ansible.builtin.shell: | 
+        mkdir -p /etc/kubernetes/manifests
+        sudo ctr run --rm --net-host ghcr.io/kube-vip/kube-vip:{{kube_vip_version}} vip /kube-vip manifest pod \
+        --interface {{kube_vip_interface}} \
+        --address {{kube_vip_address}} \
+        --controlplane \
+        --services \
+        --arp \
+        --leaderElection | sudo tee /etc/kubernetes/manifests/kube-vip.yaml
+
+    - name: Create kubeadm join config for control plane nodes
+      ansible.builtin.copy:
+        content: |
+          kind: JoinConfiguration
+          apiVersion: kubeadm.k8s.io/v1beta4
+          discovery:
+            bootstrapToken:
+              token: "{{ hostvars[groups['firstControlPlaneNode'][0]]['join_command'].stdout.split(' ')[4] }}"
+              apiServerEndpoint: "{{kube_vip_address}}:6443"
+              unsafeSkipCAVerification: true
+          controlPlane:
+            certificateKey: "{{ hostvars[groups['firstControlPlaneNode'][0]]['certificate_key'].stdout_lines[2] }}"
+        dest: /tmp/kubeadm-join-config.yaml
+
+    - name: Join the other Control Plane nodes to cluster
+      ansible.builtin.shell: |
+        kubeadm join --config /tmp/kubeadm-join-config.yaml
+      args:
+        executable: /bin/bash
+      #   touch /etc/kubernetes/ansible-installed-k8s
+      # args:
+      #   creates: /etc/kubernetes/ansible-installed-k8s
+
+# Playbook #4 - Setup Worker Nodes
+- name: Join all Worker nodes to the cluster
+  hosts: workerNodes
+  become: yes
+  vars_files:
+  - vars/vars.yaml
+  tasks:
+    - name: Create kubeadm join config for worker nodes
+      ansible.builtin.copy:
+        content: |
+          kind: JoinConfiguration
+          apiVersion: kubeadm.k8s.io/v1beta4
+          discovery:
+            bootstrapToken:
+              token: "{{ hostvars[groups['firstControlPlaneNode'][0]]['join_command'].stdout.split(' ')[4] }}"
+              apiServerEndpoint: "{{kube_vip_address}}:6443"
+              unsafeSkipCAVerification: true
+        dest: /tmp/kubeadm-join-config.yaml
+    - name: Debug token extraction
+      ansible.builtin.debug:
+        msg: "Extracted token: {{ hostvars[groups['firstControlPlaneNode'][0]]['join_command'].stdout.split(' ')[4] }}"
+    - name: Join the other Worker nodes to cluster
+      ansible.builtin.shell: |
+        kubeadm join --config /tmp/kubeadm-join-config.yaml
+    - name: Label worker nodes
+      ansible.builtin.shell: |
+        kubectl label node {{ inventory_hostname }} node-role.kubernetes.io/worker="" --overwrite
+      delegate_to: "{{ groups['firstControlPlaneNode'][0] }}"
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      when: inventory_hostname in groups['workerNodes']
+      retries: 3
+      delay: 10
+      register: result
+      until: result.rc == 0
+
+      #   touch /etc/kubernetes/ansible-installed-k8s
+      # args:
+      #   creates: /etc/kubernetes/ansible-installed-k8s

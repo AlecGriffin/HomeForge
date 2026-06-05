@@ -1,0 +1,25 @@
+provider: pihole
+
+sources:
+  - ingress
+  - event
+
+policy: upsert-only
+logLevel: info
+interval: 5m
+
+domainFilters:
+  - thegriffinshome.com
+
+# Pi-hole can’t manage TXT records reliably; noop avoids TXT ownership records
+registry: noop
+
+extraArgs:
+  - --pihole-server=https://pihole.thegriffinshome.com/admin
+
+env:
+  - name: EXTERNAL_DNS_PIHOLE_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: pihole-credentials
+        key: EXTERNAL_DNS_PIHOLE_PASSWORD

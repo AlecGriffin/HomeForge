@@ -1,0 +1,22 @@
+# References:
+# - https://ambar-thecloudgarage.medium.com/hashicorp-vault-with-docker-compose-0ea2ce1ca5ab
+
+services:
+  vault:
+    image: hashicorp/vault
+    container_name: vault
+    cap_add:
+      - IPC_LOCK
+    environment:
+      VAULT_ADDR: "https://vault.thegriffinshome.com"
+      VAULT_API_ADDR: "https://vault.thegriffinshome.com"
+      VAULT_ADDRESS: "https:/vault.thegriffinshome.com"
+    ports:
+      - "8200:8200"
+    restart: always
+    volumes:
+      - ./vault-volumes/logs:/vault/logs/:rw
+      - ./vault-volumes/data:/vault/data/:rw
+      - ./vault-volumes/config:/vault/config/:rw
+      - ./vault-volumes/file:/vault/file/:rw
+    entrypoint: vault server -config /vault/config/config.hcl

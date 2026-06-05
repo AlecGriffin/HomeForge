@@ -1,0 +1,101 @@
+# References:
+# - https://medium.com/@BuildWithLal/dockerized-gitlab-ci-register-docker-executor-as-a-gitlab-runner-71799352c9ac
+
+services:
+  gitlab:
+    image: gitlab/gitlab-ce:latest
+    container_name: gitlab
+    restart: always
+    hostname: gitlab
+    environment:
+      GITLAB_OMNIBUS_CONFIG: |
+        external_url 'https://gitlab.thegriffinshome.com'
+
+        # Enable Container Registry on a non-5000/5050 port (e.g., 5060)
+        registry_external_url 'https://registry.gitlab.thegriffinshome.com'
+        registry['enable'] = true
+
+        registry['database'] = {
+          'enabled' => true,
+        }
+
+        # Expose the registry via the bundled NGINX on 5060
+        registry_nginx['listen_port'] = 5060
+        registry_nginx['listen_https'] = false
+
+        # (Optional but commonly set) advertise host/port in GitLab UI
+        gitlab_rails['registry_enabled'] = true
+        gitlab_rails['registry_host'] = "registry.gitlab.thegriffinshome.com"
+
+        nginx['listen_port'] = 80
+        nginx['listen_https'] = false
+        gitlab_rails['gitlab_shell_ssh_port'] = 2222
+
+        # Disable Monitoring (Reduces Memory Usage)
+        prometheus_monitoring['enable'] = false
+
+        # Runs only a single Puma process to serve the application (Reduces Memory Usage)
+        # puma['worker_processes'] = 0
+
+        # Reduce concurrency of background processing daemon (Reduces Memory Usage)
+        sidekiq['concurrency'] = 10
+
+        # Configure maximum concurrency and memory limits enforced by Gitaly (Reduces Memory Usage)
+        # gitaly['configuration'] = {
+        #     concurrency: [
+        #       {
+        #         'rpc' => "/gitaly.SmartHTTPService/PostReceivePack",
+        #         'max_per_repo' => 3,
+        #       }, {
+        #         'rpc' => "/gitaly.SSHService/SSHUploadPack",
+        #         'max_per_repo' => 3,
+        #       },
+        #     ],
+        #     cgroups: {
+        #         repositories: {
+        #             count: 2,
+        #         },
+        #         mountpoint: '/sys/fs/cgroup',
+        #         hierarchy_root: 'gitaly',
+        #         memory_bytes: 500000,
+        #         cpu_shares: 512,
+        #     },
+        # }
+
+        # Configure maximum concurrency and memory limits enforced by Gitaly (Reduces Memory Usage)
+        # gitaly['env'] = {
+        #   'GITALY_COMMAND_SPAWN_MAX_PARALLEL' => '2'
+        # }
+    ports:
+      - "8443:443"   # HTTPS
+      - "8080:80"    # HTTP
+      - "2222:22"    # SSH for Git access
+      - "5060:5060"  # Container Registry
+    volumes:
+      - gitlab_config:/etc/gitlab
+      - gitlab_logs:/var/log/gitlab
+      - gitlab_data:/var/opt/gitlab
+    shm_size: '256m'
+  gitlab-runner:
+    image: gitlab/gitlab-runner:alpine
+    container_name: gitlab-runner
+    # network_mode: 'host'
+    restart: always
+    environment:
+      CI_SERVER_URL: "https://gitlab.thegriffinshome.com"
+      REGISTRATION_TOKEN: "${GITLAB_RUNNER_REGISTRATION_TOKEN}"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - gitlab-runner-config:/etc/gitlab-runner
+      - /Users/alecgriffin/homelab-configurations/gitlab/config.toml:/tmp/config.toml:ro
+      - /Users/alecgriffin/homelab-configurations/gitlab/entrypoint.sh:/usr/local/bin/entrypoint.sh:ro
+    entrypoint: ["/bin/sh", "/usr/local/bin/entrypoint.sh"]
+
+volumes:
+  # --- gitlab --- #
+  gitlab_config:
+  gitlab_logs:
+  gitlab_data:
+
+  # --- gitlab runner--- #
+  gitlab-runner-config:

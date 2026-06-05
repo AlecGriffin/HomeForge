@@ -1,0 +1,38 @@
+# Playbook #1 
+- name: Reset every node using kubeadm
+  hosts: all
+  become: true
+  become_method: sudo
+  become_user: root
+  vars_files:
+  - vars/vars.yaml
+  tasks:
+    - name: Reset kubeadm
+      ignore_errors: true
+      ansible.builtin.shell: |
+        kubeadm reset -f
+    - name: Clean up CNI configs
+      ignore_errors: true
+      ansible.builtin.shell: |
+        rm -r /etc/cni/net.d
+    - name: Delete leftover k8s configuration files
+      ignore_errors: true
+      ansible.builtin.shell: |
+        rm -r /etc/kubernetes/ | 2> /dev/null
+    - name: Clean up iptables
+      ignore_errors: true
+      ansible.builtin.shell: |
+        iptables -F             # Flush all chains
+        iptables -t nat -F      # Flushes all rules in the nat table
+        iptables -t mangle -F   # Flushes all rules in the mangle table
+        iptables -X             # Deletes all user-defined chains
+    - name: Clean up kube-vip configurations
+      ignore_errors: true
+      ansible.builtin.shell: |
+        ip neigh flush all
+        ip addr del 192.168.1.60/32 dev eth0
+    - name: Delete leftover k8s kubeconfig files
+      ignore_errors: true
+      ansible.builtin.shell: |
+        rm -r /home/{{user}}/.kube
+

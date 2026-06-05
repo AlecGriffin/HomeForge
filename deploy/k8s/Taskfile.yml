@@ -1,0 +1,79 @@
+# https://taskfile.dev/docs/guide
+
+version: '3'
+
+vars:
+  HELPER_SCRIPTS: /Users/alecgriffin/Developer/homelab/homelab-deploy/helper-scripts
+  ANSIBLE_PLAYBOOKS_PATH: /Users/alecgriffin/Developer/homelab/ansible-playbooks
+
+  PLATFORM_MANIFESTS_PROJECT_PATH: /Users/alecgriffin/Developer/homelab/gitlab-projects/platform-manifests/
+
+  # Platform Manifest Project Sctions
+  COMPONENT_MANIFESTS_PATH: platform/components
+  COMPONENT_ROLLOUT_MENIFESTS_PATH: platform/component-rollout
+
+tasks:
+# ----------------------------#
+# --- Machine Maintenance --- #
+# --------------------------- # 
+
+  update-machines:
+    cmds:
+      - |
+        ansible-playbook -v -K -i  \
+          {{.ANSIBLE_PLAYBOOKS_PATH}}/inventory.yaml \
+          {{.ANSIBLE_PLAYBOOKS_PATH}}/00-update-hosts/playbook.yaml
+
+
+# --------------------------#
+# --- Build K8s Cluster --- #
+# ------------------------- # 
+
+  deploy-cluster:
+    cmds:
+      - |
+        ansible-playbook -K -i \
+          {{.ANSIBLE_PLAYBOOKS_PATH}}/inventory.yaml \
+          {{.ANSIBLE_PLAYBOOKS_PATH}}/02-configure-k8s-host/configure/playbook.yaml
+      - kubectl get csr  --no-headers | awk '{print $1}' | xargs kubectl certificate approve # Approve initial CSRs
+      - task: bootstrap-cluster
+
+  teardown-cluster:
+    cmds:
+      - |
+        ansible-playbook -v -K -i \
+          {{.ANSIBLE_PLAYBOOKS_PATH}}/inventory.yaml \
+          {{.ANSIBLE_PLAYBOOKS_PATH}}/02-configure-k8s-host/cleanup/playbook.yaml \
+          --private-key ~/.ssh/id_rsa
+
+
+# ------------------------- #
+# --- bootstrap-cluster --- #
+# ------------------------- # 
+  
+  bootstrap-cluster:
+    cmds:
+      - task: bootstrap-flux
+      - task: setup-flux-auth
+      - task: setup-vault
+      - task: setup-components
+
+  bootstrap-flux:
+    cmds:
+      - kubectl apply -k {{.PLATFORM_MANIFESTS_PROJECT_PATH}}{{.COMPONENT_MANIFESTS_PATH}}/fluxcd   # Deploy Flux
+
+  setup-user-auth:
+    cmds:
+      - kubectl apply -f "{{.HELPER_SCRIPTS}}"/setup-user-auth/manifests.yaml
+
+  setup-flux-auth:
+    cmds:
+      - "{{.HELPER_SCRIPTS}}/setup-gitlab-tokens/generate-and-apply-token.sh" # Generate and Deploy Flux Token
+
+  setup-vault:
+    cmds:
+      - "{{.HELPER_SCRIPTS}}/setup-vault/setup.sh" # Setup Vault Connection
+
+  setup-components:
+    cmds:
+      - kubectl apply -k {{.PLATFORM_MANIFESTS_PROJECT_PATH}}{{.COMPONENT_ROLLOUT_MENIFESTS_PATH}}  # Deploy GitRepository / Kustomization to point to component git repo

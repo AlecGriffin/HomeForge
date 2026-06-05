@@ -1,0 +1,24 @@
+config:
+  oidc:
+    clientID: "Bz13uz8AXOIpMiN6pMF2K64soYfF0bDt"
+    clientSecret: "hvo_secret_FHtTnekhbykF7aa2EBrYWxtN9gAsujDxTfZdV8sdp5dc3FOMfjfsLkHFp0rnyPfX"
+    issuerURL: "https://vault.thegriffinshome.com/v1/identity/oidc/provider/default"
+    callbackURL: "https://headlamp.k8s.thegriffinshome.com/oidc-callback"
+    scopes: ""
+
+  # extraArgs:
+  # - "-oidc-use-access-token" # Do I need this?
+
+ingress:
+  enabled: true
+  # annotations:
+  #   nginx.ingress.kubernetes.io/configuration-snippet: |
+  #     proxy_set_header X-Forwarded-Proto $scheme;
+  hosts:
+    - host: headlamp.k8s.thegriffinshome.com
+      paths:
+        - path: /
+          type: Prefix
+  service:
+    name: headlamp
+    port: 80
