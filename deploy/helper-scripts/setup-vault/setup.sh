@@ -10,7 +10,7 @@ vault auth enable kubernetes
 
 # Configure the engine (example)
 vault write auth/kubernetes/config \
-  kubernetes_host=https://192.168.1.60:6443 \
+  kubernetes_host=https://192.168.1.170:6443 \
   kubernetes_ca_cert="$(kubectl config view --raw -o jsonpath='{.clusters[0].cluster.certificate-authority-data}' | base64 -d)"
 
 # Create the policy and assign it to the role in one go

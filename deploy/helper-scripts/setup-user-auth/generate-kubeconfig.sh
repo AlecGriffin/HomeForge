@@ -1,7 +1,7 @@
     
     export KUBECONFIG=/Users/alecgriffin/Developer/homelab/homelab-deploy/helper-scripts/setup-user-auth/kubeconfig.yaml
 
-    export CONTROL_PLANE_ENDPOINT="https://192.168.1.60:6443"
+    export CONTROL_PLANE_ENDPOINT="https://192.168.1.170:6443"
 
     export K8S_TOKEN=TEST_TOKEN
     

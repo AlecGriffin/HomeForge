@@ -1,7 +1,7 @@
 # Generate Key
 
 ```bash
-ssh-keygen -t ed25519 
+ssh-keygen -t ed25519 -f k8s-nodes 
 ```
 
 <!-- Non-K8s Hosts -->
