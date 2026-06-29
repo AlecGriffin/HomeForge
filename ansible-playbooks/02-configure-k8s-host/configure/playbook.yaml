@@ -112,9 +112,6 @@
     - name: Initialize the cluster using the config file
       ansible.builtin.shell: |
         kubeadm init --config /tmp/kubeadm-config.yaml --upload-certs
-      #   touch /etc/kubernetes/ansible-installed-k8s
-      # args:
-      #   creates: /etc/kubernetes/ansible-installed-k8s
       
     - name: Setup kubeconfig for regular User
       ansible.builtin.shell: |
@@ -162,14 +159,6 @@
         src: /etc/kubernetes/admin.conf
         dest: ~/.kube/config
         flat: yes
-
-    # - name: Copy kubeconfig to local machine
-    #   fetch:
-    #     flat: true
-    #     src: /etc/kubernetes/admin.conf
-    #     dest: "{{ kubeconfig_path }}"
-
-
 
 # Playbook #3 - Setup other Control-Plane Nodes
 - name: Join other Control-Plane nodes to the cluster
@@ -254,7 +243,3 @@
       delay: 10
       register: result
       until: result.rc == 0
-
-      #   touch /etc/kubernetes/ansible-installed-k8s
-      # args:
-      #   creates: /etc/kubernetes/ansible-installed-k8s
